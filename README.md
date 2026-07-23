@@ -30,3 +30,8 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
 flask --app app.main run --host=0.0.0.0 --port=5000
+Quality and security checks
+ruff check .
+ruff format --check .
+bandit -r app/
+pip-audit -r requirements.txt
