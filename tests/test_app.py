@@ -73,3 +73,17 @@ def test_unknown_route_returns_404(client):
     response = client.get("/does-not-exist")
 
     assert response.status_code == 404
+def test_version_uses_default_values(client, monkeypatch):
+    monkeypatch.delenv("APP_VERSION", raising=False)
+    monkeypatch.delenv("BUILD_NUMBER", raising=False)
+    monkeypatch.delenv("GIT_COMMIT", raising=False)
+
+    response = client.get("/version")
+
+    assert response.status_code == 200
+
+    data = response.get_json()
+
+    assert data["version"] == "dev"
+    assert data["build_number"] == "local"
+    assert data["git_commit"] == "unknown"
