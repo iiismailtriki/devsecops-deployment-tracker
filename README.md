@@ -23,6 +23,14 @@ Python Flask application.
 | `/version` | Version and build information |
 | `/info` | Complete deployment information |
 
+## Status
+
+**Implemented:** Flask API, automated tests (pytest), lint (Ruff), static security analysis
+(Bandit), and dependency vulnerability scanning (pip-audit).
+
+**Planned, not yet implemented:** Dockerfile/containerization, GitHub Actions CI pipeline,
+Kubernetes deployment manifests, and GitOps delivery via Argo CD.
+
 ## Run locally
 
 ```bash
