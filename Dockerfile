@@ -3,7 +3,7 @@ FROM python:3.12-slim
 ARG APP_VERSION=dev
 ARG VCS_REF=unknown
 ARG BUILD_DATE=unknown
-
+ARG PIP_VERSION=26.1.2
 LABEL org.opencontainers.image.title="deployment-tracker" \
       org.opencontainers.image.description="Secure DevSecOps Deployment Tracker API" \
       org.opencontainers.image.version="${APP_VERSION}" \
@@ -16,8 +16,8 @@ RUN addgroup --system --gid 10001 appgroup \
 
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir -r requirements.txt
-
+RUN python -m pip install --no-cache-dir --upgrade "pip==${PIP_VERSION}" \
+    && python -m pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY VERSION ./VERSION
 
