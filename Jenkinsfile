@@ -1,11 +1,15 @@
 pipeline {
-    agent any
+    agent {
+        label 'devsecops'
+    }
 
     stages {
-        stage('Checkout Test') {
+        stage('Agent Test') {
             steps {
-                echo 'Jenkinsfile loaded from Git successfully!'
+                echo 'Running on the DevSecOps agent!'
+                sh 'hostname'
                 sh 'pwd'
+                sh 'whoami'
                 sh 'ls -la'
             }
         }
