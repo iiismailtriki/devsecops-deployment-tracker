@@ -106,5 +106,32 @@ pipeline {
                 '''
             }
         }
+        stage('Generate SBOM - Syft') {
+            steps {
+                sh '''
+                    echo "=== Generate CycloneDX SBOM ==="
+
+                    APP_VERSION=$(cat VERSION)
+
+                    mkdir -p reports
+
+                    docker run --rm \
+                        -v /var/run/docker.sock:/var/run/docker.sock \
+                        anchore/syft:v1.50.0 \
+                        deployment-tracker:"$APP_VERSION" \
+                        -o cyclonedx-json \
+                        > reports/sbom.cdx.json
+
+                    test -s reports/sbom.cdx.json
+
+                    echo "SBOM generated:"
+                    ls -lh reports/sbom.cdx.json
+                '''
+
+                archiveArtifacts \
+                    artifacts: 'reports/sbom.cdx.json',
+                    fingerprint: true
+            }
+        }
     }
 }
