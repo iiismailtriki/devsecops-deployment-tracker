@@ -133,5 +133,43 @@ pipeline {
                     fingerprint: true
             }
         }
+        stage('Publish Image - GHCR') {
+            steps {
+                withCredentials([
+                    string(
+                        credentialsId: 'ghcr-token',
+                        variable: 'GHCR_TOKEN'
+                    )
+                ]) {
+                    sh '''
+                        set +x
+
+                        echo "=== Publish Image to GHCR ==="
+
+                        APP_VERSION=$(cat VERSION)
+
+                        LOCAL_IMAGE="deployment-tracker:$APP_VERSION"
+                        REGISTRY_IMAGE="ghcr.io/iiismailtriki/deployment-tracker:$APP_VERSION"
+
+                        TEMP_DOCKER_CONFIG=$(mktemp -d)
+                        export DOCKER_CONFIG="$TEMP_DOCKER_CONFIG"
+
+                        echo "$GHCR_TOKEN" | \
+                            docker login ghcr.io \
+                            -u iiismailtriki \
+                            --password-stdin
+
+                        docker tag \
+                            "$LOCAL_IMAGE" \
+                            "$REGISTRY_IMAGE"
+
+                        docker push "$REGISTRY_IMAGE"
+
+                        docker logout ghcr.io || true
+                        rm -rf "$TEMP_DOCKER_CONFIG"
+                    '''
+                }
+            }
+        }
     }
 }
