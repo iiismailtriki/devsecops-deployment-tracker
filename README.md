@@ -43,3 +43,4 @@ ruff check .
 ruff format --check .
 bandit -r app/
 pip-audit -r requirements.txt
+
