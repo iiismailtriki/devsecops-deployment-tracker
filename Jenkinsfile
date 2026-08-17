@@ -57,5 +57,34 @@ pipeline {
                 '''
             }
         }
+        stage('Dockerfile Lint - Hadolint') {
+            steps {
+                sh '''
+                    echo "=== Hadolint ==="
+                    docker run --rm \
+                        -i hadolint/hadolint:latest \
+                        < Dockerfile
+                '''
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                sh '''
+                    echo "=== Docker Build ==="
+
+                    APP_VERSION=$(cat VERSION)
+                    VCS_REF=$(git rev-parse HEAD)
+                    BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+                    docker build --pull \
+                        --build-arg APP_VERSION="$APP_VERSION" \
+                        --build-arg VCS_REF="$VCS_REF" \
+                        --build-arg BUILD_DATE="$BUILD_DATE" \
+                        -t deployment-tracker:"$APP_VERSION" \
+                        .
+                '''
+            }
+        }
     }
 }
