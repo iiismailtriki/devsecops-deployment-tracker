@@ -8,7 +8,7 @@ LABEL org.opencontainers.image.title="deployment-tracker" \
       org.opencontainers.image.description="Secure DevSecOps Deployment Tracker API" \
       org.opencontainers.image.version="${APP_VERSION}" \
       org.opencontainers.image.revision="${VCS_REF}" \
-      org.opencontainers.image.created="${BUILD_DATE}"
+      org.opencontainers.image.created="${BUILD_DATE}"\
       org.opencontainers.image.source="https://github.com/iiismailtriki/devsecops-deployment-tracker"
 WORKDIR /app
 
