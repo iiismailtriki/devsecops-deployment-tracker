@@ -21,11 +21,39 @@ pipeline {
             }
         }
 
+
         stage('Unit Tests') {
             steps {
                 sh '''
-                    echo "=== Running pytest ==="
+                    echo "=== pytest ==="
                     .venv/bin/pytest -q
+                '''
+            }
+        }
+
+        stage('Code Quality - Ruff') {
+            steps {
+                sh '''
+                    echo "=== Ruff ==="
+                    .venv/bin/ruff check .
+                '''
+            }
+        }
+
+        stage('SAST - Bandit') {
+            steps {
+                sh '''
+                    echo "=== Bandit ==="
+                    .venv/bin/bandit -r app
+                '''
+            }
+        }
+
+        stage('Dependency Audit') {
+            steps {
+                sh '''
+                    echo "=== pip-audit ==="
+                    .venv/bin/pip-audit -r requirements.txt
                 '''
             }
         }
