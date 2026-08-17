@@ -10,6 +10,19 @@ LABEL org.opencontainers.image.title="deployment-tracker" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.created="${BUILD_DATE}"\
       org.opencontainers.image.source="https://github.com/iiismailtriki/devsecops-deployment-tracker"
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade \
+        bsdutils \
+        libblkid1 \
+        liblastlog2-2 \
+        libmount1 \
+        libsmartcols1 \
+        libuuid1 \
+        login \
+        mount \
+        util-linux \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 RUN addgroup --system --gid 10001 appgroup \
