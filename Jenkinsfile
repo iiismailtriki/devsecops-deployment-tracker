@@ -86,5 +86,25 @@ pipeline {
                 '''
             }
         }
+        stage('Container Vulnerability Scan - Trivy') {
+            steps {
+                sh '''
+                    echo "=== Trivy Image Scan ==="
+
+                    APP_VERSION=$(cat VERSION)
+
+                    docker run --rm \
+                        -v /var/run/docker.sock:/var/run/docker.sock \
+                        -v trivy-cache:/root/.cache/ \
+                        aquasec/trivy:0.72.0 \
+                        image \
+                        --scanners vuln \
+                        --severity HIGH,CRITICAL \
+                        --ignore-unfixed \
+                        --exit-code 1 \
+                        deployment-tracker:"$APP_VERSION"
+                '''
+            }
+        }
     }
 }
