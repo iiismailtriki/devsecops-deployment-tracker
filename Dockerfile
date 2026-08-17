@@ -12,17 +12,16 @@ LABEL org.opencontainers.image.title="deployment-tracker" \
       org.opencontainers.image.source="https://github.com/iiismailtriki/devsecops-deployment-tracker"
 RUN apt-get update \
     && apt-get install -y --no-install-recommends --only-upgrade \
-        bsdutils \
-        libblkid1 \
-        liblastlog2-2 \
-        libmount1 \
-        libsmartcols1 \
-        libuuid1 \
-        login \
-        mount \
-        util-linux \
+        bsdutils=1:2.41.5-0+deb13u1 \
+        libblkid1=2.41.5-0+deb13u1 \
+        liblastlog2-2=2.41.5-0+deb13u1 \
+        libmount1=2.41.5-0+deb13u1 \
+        libsmartcols1=2.41.5-0+deb13u1 \
+        libuuid1=2.41.5-0+deb13u1 \
+        login=1:4.16.0-2+really2.41.5-0+deb13u1 \
+        mount=2.41.5-0+deb13u1 \
+        util-linux=2.41.5-0+deb13u1 \
     && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
 RUN addgroup --system --gid 10001 appgroup \
