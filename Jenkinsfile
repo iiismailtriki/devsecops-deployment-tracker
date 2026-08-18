@@ -21,7 +21,6 @@ pipeline {
             }
         }
 
-
         stage('Unit Tests') {
             steps {
                 sh '''
@@ -57,6 +56,7 @@ pipeline {
                 '''
             }
         }
+
         stage('Dockerfile Lint - Hadolint') {
             steps {
                 sh '''
@@ -86,6 +86,7 @@ pipeline {
                 '''
             }
         }
+
         stage('Container Vulnerability Scan - Trivy') {
             steps {
                 sh '''
@@ -106,6 +107,7 @@ pipeline {
                 '''
             }
         }
+
         stage('Generate SBOM - Syft') {
             steps {
                 sh '''
@@ -133,6 +135,7 @@ pipeline {
                     fingerprint: true
             }
         }
+
         stage('Publish Image - GHCR') {
             steps {
                 withCredentials([
@@ -143,6 +146,7 @@ pipeline {
                 ]) {
                     sh '''
                         set +x
+                        set -e
 
                         echo "=== Publish Image to GHCR ==="
 
@@ -151,8 +155,17 @@ pipeline {
                         LOCAL_IMAGE="deployment-tracker:$APP_VERSION"
                         REGISTRY_IMAGE="ghcr.io/iiismailtriki/deployment-tracker:$APP_VERSION"
 
+                        mkdir -p reports
+
                         TEMP_DOCKER_CONFIG=$(mktemp -d)
                         export DOCKER_CONFIG="$TEMP_DOCKER_CONFIG"
+
+                        cleanup() {
+                            docker logout ghcr.io >/dev/null 2>&1 || true
+                            rm -rf "$TEMP_DOCKER_CONFIG"
+                        }
+
+                        trap cleanup EXIT
 
                         echo "$GHCR_TOKEN" | \
                             docker login ghcr.io \
@@ -163,12 +176,48 @@ pipeline {
                             "$LOCAL_IMAGE" \
                             "$REGISTRY_IMAGE"
 
-                        docker push "$REGISTRY_IMAGE"
+                        echo "=== Push Image ==="
 
-                        docker logout ghcr.io || true
-                        rm -rf "$TEMP_DOCKER_CONFIG"
+                        PUSH_OUTPUT="$(docker push "$REGISTRY_IMAGE" 2>&1)"
+
+                        echo "$PUSH_OUTPUT"
+
+                        echo "=== Extract Published Digest ==="
+
+                        IMAGE_DIGEST="$(echo "$PUSH_OUTPUT" \
+                            | grep -oE 'digest: sha256:[0-9a-f]{64}' \
+                            | tail -n 1 \
+                            | awk '{print $2}')"
+
+                        if [ -z "$IMAGE_DIGEST" ]; then
+                            echo "ERROR: Could not determine pushed image digest."
+                            exit 1
+                        fi
+
+                        if ! echo "$IMAGE_DIGEST" \
+                            | grep -Eq '^sha256:[0-9a-f]{64}$'; then
+                            echo "ERROR: Invalid image digest format."
+                            exit 1
+                        fi
+
+                        echo "$IMAGE_DIGEST" > reports/image-digest.txt
+
+                        test -s reports/image-digest.txt
+
+                        echo "Published image:"
+                        echo "$REGISTRY_IMAGE"
+
+                        echo "Published digest:"
+                        cat reports/image-digest.txt
+
+                        echo "Immutable image reference:"
+                        echo "ghcr.io/iiismailtriki/deployment-tracker@$IMAGE_DIGEST"
                     '''
                 }
+
+                archiveArtifacts \
+                    artifacts: 'reports/image-digest.txt',
+                    fingerprint: true
             }
         }
     }
