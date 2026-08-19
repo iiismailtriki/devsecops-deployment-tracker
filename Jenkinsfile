@@ -178,9 +178,17 @@ pipeline {
 
                         echo "=== Push Image ==="
 
+                        set +e
                         PUSH_OUTPUT="$(docker push "$REGISTRY_IMAGE" 2>&1)"
+                        PUSH_STATUS=$?
+                        set -e
 
-                        echo "$PUSH_OUTPUT"
+                        printf '%s\n' "$PUSH_OUTPUT"
+
+                        if [ "$PUSH_STATUS" -ne 0 ]; then
+                            echo "ERROR: Docker push to GHCR failed with exit code $PUSH_STATUS."
+                            exit "$PUSH_STATUS"
+                        fi
 
                         echo "=== Extract Published Digest ==="
 
