@@ -438,11 +438,22 @@ pipeline {
                             --type cyclonedx \
                             --registry-username iiismailtriki \
                             --registry-password "$GHCR_TOKEN" \
-                            "$IMAGE_REF"
+                            "$IMAGE_REF" \
+                            > reports/sbom-attestation-verification.json
+
+                        test -s reports/sbom-attestation-verification.json
+
+                        echo "Attestation verification evidence saved:"
+                        ls -lh reports/sbom-attestation-verification.json
 
                         echo "=== SBOM attestation verification successful ==="
                     '''
                 }
+
+                archiveArtifacts(
+                    artifacts: 'reports/sbom-attestation-verification.json',
+                    fingerprint: true
+                )
             }
         }
 
