@@ -220,5 +220,109 @@ pipeline {
                     fingerprint: true
             }
         }
+
+        stage('Sign and Verify Image - Cosign') {
+            steps {
+                withCredentials([
+                    file(
+                        credentialsId: 'cosign-private-key',
+                        variable: 'COSIGN_KEY_FILE'
+                    ),
+                    string(
+                        credentialsId: 'cosign-password',
+                        variable: 'COSIGN_PASSWORD'
+                    ),
+                    string(
+                        credentialsId: 'ghcr-token',
+                        variable: 'GHCR_TOKEN'
+                    )
+                ]) {
+                    sh '''
+                        set +x
+                        set -e
+
+                        echo "=== Cosign Sign + Verify ==="
+
+                        echo "=== Validate required inputs ==="
+
+                        test -s reports/image-digest.txt
+                        test -s cosign.pub
+                        test -s "$COSIGN_KEY_FILE"
+
+                        IMAGE_DIGEST=$(cat reports/image-digest.txt)
+
+                        if ! echo "$IMAGE_DIGEST" \
+                            | grep -Eq '^sha256:[0-9a-f]{64}$'; then
+                            echo "ERROR: Invalid image digest."
+                            exit 1
+                        fi
+
+                        IMAGE_REF="ghcr.io/iiismailtriki/deployment-tracker@$IMAGE_DIGEST"
+
+                        echo "Exact immutable image:"
+                        echo "$IMAGE_REF"
+
+                        echo "=== Create temporary key volume ==="
+
+                        COSIGN_VOL=$(docker volume create)
+
+                        cleanup() {
+                            echo "Cleaning temporary Cosign key volume..."
+                            docker volume rm -f "$COSIGN_VOL" \
+                                >/dev/null 2>&1 || true
+                        }
+
+                        trap cleanup EXIT
+
+                        echo "=== Copy private key into temporary volume ==="
+
+                        docker run --rm -i \
+                            -v "$COSIGN_VOL:/keys" \
+                            alpine:3.20 \
+                            sh -c 'umask 077; cat > /keys/cosign.key' \
+                            < "$COSIGN_KEY_FILE"
+
+                        echo "=== Copy public key into temporary volume ==="
+
+                        docker run --rm -i \
+                            -v "$COSIGN_VOL:/keys" \
+                            alpine:3.20 \
+                            sh -c 'cat > /keys/cosign.pub; chmod 0644 /keys/cosign.pub' \
+                            < cosign.pub
+
+                        echo "=== Sign exact image digest ==="
+
+                        docker run --rm \
+                            --user 0:0 \
+                            -e HOME=/tmp \
+                            -e COSIGN_PASSWORD \
+                            -v "$COSIGN_VOL:/keys:ro" \
+                            ghcr.io/sigstore/cosign/cosign:v3.0.6 \
+                            sign \
+                            --yes \
+                            --key /keys/cosign.key \
+                            --registry-username iiismailtriki \
+                            --registry-password "$GHCR_TOKEN" \
+                            "$IMAGE_REF"
+
+                        echo "=== Verify image signature ==="
+
+                        docker run --rm \
+                            --user 0:0 \
+                            -e HOME=/tmp \
+                            -v "$COSIGN_VOL:/keys:ro" \
+                            ghcr.io/sigstore/cosign/cosign:v3.0.6 \
+                            verify \
+                            --key /keys/cosign.pub \
+                            --registry-username iiismailtriki \
+                            --registry-password "$GHCR_TOKEN" \
+                            "$IMAGE_REF"
+
+                        echo "=== Cosign verification successful ==="
+                    '''
+                }
+            }
+        }
+
     }
 }
