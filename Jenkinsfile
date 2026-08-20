@@ -177,7 +177,9 @@ pipeline {
                     VCS_REF=$(git rev-parse HEAD)
                     BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-                    docker buildx build --load --pull \
+                    mkdir -p reports
+
+                    BUILDX_METADATA_PROVENANCE=max docker buildx build --load --pull --metadata-file reports/build-metadata.json \
                         --build-arg APP_VERSION="$APP_VERSION" \
                         --build-arg VCS_REF="$VCS_REF" \
                         --build-arg BUILD_DATE="$BUILD_DATE" \
