@@ -27,17 +27,36 @@ pipeline {
 
                     echo "=== Copy repository + Git history ==="
 
-                    tar                         --exclude='./.venv'                         --exclude='./reports'                         -cf - .                     | docker run --rm -i                         -v "$GITLEAKS_VOL:/repo"                         alpine:3.20                         tar -xf - -C /repo
+                    tar \
+                        --exclude='./.venv' \
+                        --exclude='./reports' \
+                        -cf - . \
+                    | docker run --rm -i \
+                        -v "$GITLEAKS_VOL:/repo" \
+                        alpine:3.20 \
+                        tar -xf - -C /repo
 
                     echo "=== Prepare report directory ==="
 
-                    docker run --rm                         -v "$GITLEAKS_VOL:/repo"                         alpine:3.20                         mkdir -p /repo/reports
+                    docker run --rm \
+                        -v "$GITLEAKS_VOL:/repo" \
+                        alpine:3.20 \
+                        mkdir -p /repo/reports
 
                     echo "=== Scan complete Git history ==="
 
                     set +e
 
-                    docker run --rm                         -v "$GITLEAKS_VOL:/repo"                         -w /repo                         ghcr.io/gitleaks/gitleaks:v8.30.1                         git                         --redact                         --no-banner                         --report-format json                         --report-path /repo/reports/gitleaks.json                         /repo
+                    docker run --rm \
+                        -v "$GITLEAKS_VOL:/repo" \
+                        -w /repo \
+                        ghcr.io/gitleaks/gitleaks:v8.30.1 \
+                        git \
+                        --redact \
+                        --no-banner \
+                        --report-format json \
+                        --report-path /repo/reports/gitleaks.json \
+                        /repo
 
                     GITLEAKS_STATUS=$?
 
@@ -45,9 +64,16 @@ pipeline {
 
                     echo "=== Retrieve Gitleaks report ==="
 
-                    if docker run --rm                         -v "$GITLEAKS_VOL:/repo:ro"                         alpine:3.20                         test -f /repo/reports/gitleaks.json
+                    if docker run --rm \
+                        -v "$GITLEAKS_VOL:/repo:ro" \
+                        alpine:3.20 \
+                        test -f /repo/reports/gitleaks.json
                     then
-                        docker run --rm                             -v "$GITLEAKS_VOL:/repo:ro"                             alpine:3.20                             cat /repo/reports/gitleaks.json                             > reports/gitleaks.json
+                        docker run --rm \
+                            -v "$GITLEAKS_VOL:/repo:ro" \
+                            alpine:3.20 \
+                            cat /repo/reports/gitleaks.json \
+                            > reports/gitleaks.json
                     else
                         echo "ERROR: Gitleaks report was not generated."
                         exit 2
