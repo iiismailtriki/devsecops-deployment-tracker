@@ -4,6 +4,80 @@ pipeline {
     }
 
     stages {
+        stage('Secret Scan - Gitleaks') {
+            steps {
+                sh '''
+                    set -eu
+
+                    echo "=== Gitleaks Secret Scan ==="
+
+                    mkdir -p reports
+                    rm -f reports/gitleaks.json
+
+                    GITLEAKS_VOL="gitleaks-${BUILD_NUMBER}-$$"
+
+                    cleanup() {
+                        docker volume rm -f "$GITLEAKS_VOL" >/dev/null 2>&1 || true
+                    }
+
+                    trap cleanup 0
+
+                    echo "=== Create temporary Gitleaks volume ==="
+                    docker volume create "$GITLEAKS_VOL" >/dev/null
+
+                    echo "=== Copy repository + Git history ==="
+
+                    tar                         --exclude='./.venv'                         --exclude='./reports'                         -cf - .                     | docker run --rm -i                         -v "$GITLEAKS_VOL:/repo"                         alpine:3.20                         tar -xf - -C /repo
+
+                    echo "=== Prepare report directory ==="
+
+                    docker run --rm                         -v "$GITLEAKS_VOL:/repo"                         alpine:3.20                         mkdir -p /repo/reports
+
+                    echo "=== Scan complete Git history ==="
+
+                    set +e
+
+                    docker run --rm                         -v "$GITLEAKS_VOL:/repo"                         -w /repo                         ghcr.io/gitleaks/gitleaks:v8.30.1                         git                         --redact                         --no-banner                         --report-format json                         --report-path /repo/reports/gitleaks.json                         /repo
+
+                    GITLEAKS_STATUS=$?
+
+                    set -e
+
+                    echo "=== Retrieve Gitleaks report ==="
+
+                    if docker run --rm                         -v "$GITLEAKS_VOL:/repo:ro"                         alpine:3.20                         test -f /repo/reports/gitleaks.json
+                    then
+                        docker run --rm                             -v "$GITLEAKS_VOL:/repo:ro"                             alpine:3.20                             cat /repo/reports/gitleaks.json                             > reports/gitleaks.json
+                    else
+                        echo "ERROR: Gitleaks report was not generated."
+                        exit 2
+                    fi
+
+                    test -s reports/gitleaks.json
+
+                    echo "Gitleaks report:"
+                    ls -lh reports/gitleaks.json
+
+                    if [ "$GITLEAKS_STATUS" -ne 0 ]; then
+                        echo "ERROR: Gitleaks detected a secret or encountered an error."
+                        exit "$GITLEAKS_STATUS"
+                    fi
+
+                    echo "=== Gitleaks secret scan successful ==="
+                '''
+            }
+
+            post {
+                always {
+                    archiveArtifacts(
+                        artifacts: 'reports/gitleaks.json',
+                        allowEmptyArchive: true,
+                        fingerprint: true
+                    )
+                }
+            }
+        }
+
         stage('Environment') {
             steps {
                 sh '''
