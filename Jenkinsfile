@@ -177,7 +177,7 @@ pipeline {
                     VCS_REF=$(git rev-parse HEAD)
                     BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-                    docker build --pull \
+                    docker buildx build --load --pull \
                         --build-arg APP_VERSION="$APP_VERSION" \
                         --build-arg VCS_REF="$VCS_REF" \
                         --build-arg BUILD_DATE="$BUILD_DATE" \

@@ -23,4 +23,12 @@ RUN install -m 0755 -d /etc/apt/keyrings \
     && apt-get install -y --no-install-recommends docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
 
+
+# Docker Buildx / BuildKit CLI plugin
+COPY --from=docker/buildx-bin:0.34.0 /buildx \
+    /usr/libexec/docker/cli-plugins/docker-buildx
+
+RUN chmod +x /usr/libexec/docker/cli-plugins/docker-buildx \
+    && docker buildx version
+
 USER jenkins
