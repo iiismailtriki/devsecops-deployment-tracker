@@ -692,7 +692,9 @@ PYTHON
                         echo "=== Attest SLSA provenance ==="
 
                         docker run --rm \
-                            -e COSIGN_PASSWORD="$COSIGN_PASSWORD" \
+                            --user 0:0 \
+                            -e HOME=/tmp \
+                            -e COSIGN_PASSWORD \
                             -v "$COSIGN_VOL:/keys:ro" \
                             ghcr.io/sigstore/cosign/cosign:v3.0.6 \
                             attest \
@@ -707,6 +709,8 @@ PYTHON
                         echo "=== Verify SLSA provenance attestation ==="
 
                         docker run --rm \
+                            --user 0:0 \
+                            -e HOME=/tmp \
                             -v "$COSIGN_VOL:/keys:ro" \
                             ghcr.io/sigstore/cosign/cosign:v3.0.6 \
                             verify-attestation \
