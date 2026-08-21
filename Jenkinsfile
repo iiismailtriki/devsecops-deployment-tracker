@@ -559,5 +559,184 @@ pipeline {
             }
         }
 
+
+        stage('Attest and Verify Provenance - Cosign') {
+            steps {
+                withCredentials([
+                    file(
+                        credentialsId: 'cosign-private-key',
+                        variable: 'COSIGN_KEY_FILE'
+                    ),
+                    string(
+                        credentialsId: 'cosign-password',
+                        variable: 'COSIGN_PASSWORD'
+                    ),
+                    string(
+                        credentialsId: 'ghcr-token',
+                        variable: 'GHCR_TOKEN'
+                    )
+                ]) {
+                    sh '''
+                        set +x
+                        set -eu
+
+                        echo "=== Cosign Build Provenance Attestation + Verification ==="
+
+                        test -s reports/build-metadata.json
+                        test -s reports/image-digest.txt
+                        test -s cosign.pub
+
+                        IMAGE_DIGEST="$(cat reports/image-digest.txt)"
+
+                        case "$IMAGE_DIGEST" in
+                            sha256:*) ;;
+                            *)
+                                echo "ERROR: Invalid image digest."
+                                exit 1
+                                ;;
+                        esac
+
+                        IMAGE_REF="ghcr.io/iiismailtriki/deployment-tracker@${IMAGE_DIGEST}"
+
+                        echo "Exact image:"
+                        echo "$IMAGE_REF"
+
+                        echo "=== Extract BuildKit provenance ==="
+
+                        python3 - <<'PYTHON'
+import json
+from pathlib import Path
+
+metadata_file = Path("reports/build-metadata.json")
+provenance_file = Path("reports/provenance.json")
+
+metadata = json.loads(metadata_file.read_text())
+
+provenance = metadata.get("buildx.build.provenance")
+
+if not isinstance(provenance, dict):
+    raise SystemExit(
+        "ERROR: buildx.build.provenance is missing."
+    )
+
+required = {
+    "builder",
+    "buildType",
+    "materials",
+    "invocation",
+    "buildConfig",
+    "metadata",
+}
+
+missing = sorted(required - provenance.keys())
+
+if missing:
+    raise SystemExit(
+        "ERROR: Missing provenance fields: "
+        + ", ".join(missing)
+    )
+
+provenance_file.write_text(
+    json.dumps(
+        provenance,
+        indent=2,
+        sort_keys=True
+    ) + "\\n"
+)
+
+print("Provenance extracted successfully.")
+PYTHON
+
+                        test -s reports/provenance.json
+
+                        echo "Provenance predicate:"
+                        ls -lh reports/provenance.json
+
+                        COSIGN_VOL="cosign-provenance-${BUILD_NUMBER}-$$"
+
+                        cleanup() {
+                            echo "Cleaning temporary provenance volume..."
+                            docker volume rm -f "$COSIGN_VOL" >/dev/null 2>&1 || true
+                        }
+
+                        trap cleanup 0
+
+                        echo "=== Create temporary Cosign volume ==="
+
+                        docker volume create "$COSIGN_VOL" >/dev/null
+
+                        echo "=== Copy private key ==="
+
+                        docker run --rm -i \
+                            -v "$COSIGN_VOL:/keys" \
+                            alpine:3.20 \
+                            sh -c 'umask 077; cat > /keys/cosign.key' \
+                            < "$COSIGN_KEY_FILE"
+
+                        echo "=== Copy public key ==="
+
+                        docker run --rm -i \
+                            -v "$COSIGN_VOL:/keys" \
+                            alpine:3.20 \
+                            sh -c 'cat > /keys/cosign.pub; chmod 0644 /keys/cosign.pub' \
+                            < cosign.pub
+
+                        echo "=== Copy provenance predicate ==="
+
+                        docker run --rm -i \
+                            -v "$COSIGN_VOL:/keys" \
+                            alpine:3.20 \
+                            sh -c 'cat > /keys/provenance.json; chmod 0644 /keys/provenance.json' \
+                            < reports/provenance.json
+
+                        echo "=== Attest SLSA provenance ==="
+
+                        docker run --rm \
+                            -e COSIGN_PASSWORD="$COSIGN_PASSWORD" \
+                            -v "$COSIGN_VOL:/keys:ro" \
+                            ghcr.io/sigstore/cosign/cosign:v3.0.6 \
+                            attest \
+                            --yes \
+                            --key /keys/cosign.key \
+                            --predicate /keys/provenance.json \
+                            --type slsaprovenance02 \
+                            --registry-username iiismailtriki \
+                            --registry-password "$GHCR_TOKEN" \
+                            "$IMAGE_REF"
+
+                        echo "=== Verify SLSA provenance attestation ==="
+
+                        docker run --rm \
+                            -v "$COSIGN_VOL:/keys:ro" \
+                            ghcr.io/sigstore/cosign/cosign:v3.0.6 \
+                            verify-attestation \
+                            --key /keys/cosign.pub \
+                            --type slsaprovenance02 \
+                            --registry-username iiismailtriki \
+                            --registry-password "$GHCR_TOKEN" \
+                            "$IMAGE_REF" \
+                            > reports/provenance-attestation-verification.json
+
+                        test -s reports/provenance-attestation-verification.json
+
+                        echo "Verification evidence:"
+                        ls -lh reports/provenance-attestation-verification.json
+
+                        echo "=== Build provenance attestation verification successful ==="
+                    '''
+                }
+            }
+
+            post {
+                always {
+                    archiveArtifacts(
+                        artifacts: 'reports/build-metadata.json,reports/provenance.json,reports/provenance-attestation-verification.json',
+                        allowEmptyArchive: true,
+                        fingerprint: true
+                    )
+                }
+            }
+        }
+
     }
 }
