@@ -16,6 +16,7 @@ RUN apt-get update \
         libblkid1=2.41.5-0+deb13u1 \
         liblastlog2-2=2.41.5-0+deb13u1 \
         libmount1=2.41.5-0+deb13u1 \
+        libpcre2-8-0=10.46-1~deb13u3 \
         libsmartcols1=2.41.5-0+deb13u1 \
         libuuid1=2.41.5-0+deb13u1 \
         login=1:4.16.0-2+really2.41.5-0+deb13u1 \
