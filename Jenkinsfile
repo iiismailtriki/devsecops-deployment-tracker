@@ -306,6 +306,14 @@ pipeline {
         }
 
         stage('Publish Image - GHCR') {
+            when {
+                expression {
+                    env.BRANCH_NAME == 'main' ||
+                    env.GIT_BRANCH == 'origin/main' ||
+                    env.GIT_BRANCH == 'main'
+                }
+            }
+
             steps {
                 withCredentials([
                     string(
@@ -399,6 +407,14 @@ pipeline {
         }
 
         stage('Sign and Verify Image - Cosign') {
+            when {
+                expression {
+                    env.BRANCH_NAME == 'main' ||
+                    env.GIT_BRANCH == 'origin/main' ||
+                    env.GIT_BRANCH == 'main'
+                }
+            }
+
             steps {
                 withCredentials([
                     file(
@@ -503,6 +519,14 @@ pipeline {
 
 
         stage('Attest and Verify SBOM - Cosign') {
+            when {
+                expression {
+                    env.BRANCH_NAME == 'main' ||
+                    env.GIT_BRANCH == 'origin/main' ||
+                    env.GIT_BRANCH == 'main'
+                }
+            }
+
             steps {
                 withCredentials([
                     file(
@@ -628,6 +652,14 @@ pipeline {
 
 
         stage('Attest and Verify Provenance - Cosign') {
+            when {
+                expression {
+                    env.BRANCH_NAME == 'main' ||
+                    env.GIT_BRANCH == 'origin/main' ||
+                    env.GIT_BRANCH == 'main'
+                }
+            }
+
             steps {
                 withCredentials([
                     file(
