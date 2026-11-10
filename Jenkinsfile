@@ -168,6 +168,73 @@ pipeline {
             }
         }
 
+        stage('Kubernetes IaC Security - Helm + Trivy') {
+            steps {
+                sh '''
+                    set -eu
+
+                    echo "=== Helm Version ==="
+                    helm version --short
+
+                    echo "=== Helm Lint ==="
+                    helm lint helm/deployment-tracker
+
+                    echo "=== Helm Render ==="
+
+                    mkdir -p reports
+                    rm -f reports/rendered-k8s.yaml
+
+                    helm template deployment-tracker \
+                        helm/deployment-tracker \
+                        > reports/rendered-k8s.yaml
+
+                    test -s reports/rendered-k8s.yaml
+
+                    TRIVY_CONFIG_VOL="trivy-config-${BUILD_NUMBER}-$$"
+
+                    cleanup() {
+                        docker volume rm -f "$TRIVY_CONFIG_VOL" >/dev/null 2>&1 || true
+                    }
+
+                    trap cleanup EXIT
+
+                    echo "=== Create temporary scan volume ==="
+                    docker volume create "$TRIVY_CONFIG_VOL" >/dev/null
+
+                    echo "=== Copy rendered manifest into scan volume ==="
+
+                    docker run --rm -i \
+                        -v "$TRIVY_CONFIG_VOL:/scan" \
+                        alpine:3.20 \
+                        sh -c 'cat > /scan/rendered-k8s.yaml' \
+                        < reports/rendered-k8s.yaml
+
+                    echo "=== Trivy Kubernetes Misconfiguration Scan ==="
+
+                    docker run --rm \
+                        -v "$TRIVY_CONFIG_VOL:/scan:ro" \
+                        -v trivy-cache:/root/.cache/ \
+                        aquasec/trivy:0.72.0 \
+                        config \
+                        --severity HIGH,CRITICAL \
+                        --exit-code 1 \
+                        /scan/rendered-k8s.yaml
+
+                    echo "=== Kubernetes IaC security validation successful ==="
+                '''
+            }
+
+            post {
+                always {
+                    archiveArtifacts(
+                        artifacts: 'reports/rendered-k8s.yaml',
+                        allowEmptyArchive: true,
+                        fingerprint: true
+                    )
+                }
+            }
+        }
+
         stage('Docker Build') {
             steps {
                 sh '''
@@ -239,6 +306,14 @@ pipeline {
         }
 
         stage('Publish Image - GHCR') {
+            when {
+                expression {
+                    env.BRANCH_NAME == 'main' ||
+                    env.GIT_BRANCH == 'origin/main' ||
+                    env.GIT_BRANCH == 'main'
+                }
+            }
+
             steps {
                 withCredentials([
                     string(
@@ -332,6 +407,14 @@ pipeline {
         }
 
         stage('Sign and Verify Image - Cosign') {
+            when {
+                expression {
+                    env.BRANCH_NAME == 'main' ||
+                    env.GIT_BRANCH == 'origin/main' ||
+                    env.GIT_BRANCH == 'main'
+                }
+            }
+
             steps {
                 withCredentials([
                     file(
@@ -436,6 +519,14 @@ pipeline {
 
 
         stage('Attest and Verify SBOM - Cosign') {
+            when {
+                expression {
+                    env.BRANCH_NAME == 'main' ||
+                    env.GIT_BRANCH == 'origin/main' ||
+                    env.GIT_BRANCH == 'main'
+                }
+            }
+
             steps {
                 withCredentials([
                     file(
@@ -561,6 +652,14 @@ pipeline {
 
 
         stage('Attest and Verify Provenance - Cosign') {
+            when {
+                expression {
+                    env.BRANCH_NAME == 'main' ||
+                    env.GIT_BRANCH == 'origin/main' ||
+                    env.GIT_BRANCH == 'main'
+                }
+            }
+
             steps {
                 withCredentials([
                     file(

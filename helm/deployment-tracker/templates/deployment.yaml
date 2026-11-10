@@ -23,6 +23,7 @@ spec:
 
       securityContext:
         runAsNonRoot: true
+        fsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
 
@@ -40,6 +41,7 @@ spec:
           securityContext:
             runAsUser: 10001
             runAsGroup: 10001
+            readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
               drop:
@@ -65,3 +67,11 @@ spec:
 
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: tmp
+          emptyDir: {}

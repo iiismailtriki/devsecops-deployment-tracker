@@ -1,0 +1,3 @@
+# Verified false positives: public Cosign key fingerprints
+45831fb4eac50393c967f431c69d76594e844875:docs/signing/KEY_ROTATION.md:generic-api-key:12
+45831fb4eac50393c967f431c69d76594e844875:docs/signing/KEY_ROTATION.md:generic-api-key:22

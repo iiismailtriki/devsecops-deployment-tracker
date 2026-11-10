@@ -21,6 +21,7 @@ RUN apt-get update \
         libuuid1=2.41.5-0+deb13u1 \
         login=1:4.16.0-2+really2.41.5-0+deb13u1 \
         mount=2.41.5-0+deb13u1 \
+        zlib1g=1:1.3.dfsg+really1.3.1-1+deb13u1 \
         util-linux=2.41.5-0+deb13u1 \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
