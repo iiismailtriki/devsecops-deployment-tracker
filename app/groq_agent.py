@@ -1,13 +1,15 @@
-"""Bounded, read-only Jenkins investigation agent using the Groq Chat API."""
+"""Bounded Jenkins investigation agent with an import-only preview tool."""
 
 import getpass
 import json
 import os
+from pathlib import Path
 
 import requests
 
 from app.agent import INSTRUCTIONS, run_tool
 from app.jenkins_client import JenkinsClient
+from app.remediation_bridge import safe_import_preview
 
 API_URL = "https://api.groq.com/openai/v1/chat/completions"
 DEFAULT_MODEL = "openai/gpt-oss-20b"
@@ -41,6 +43,23 @@ TOOLS = [
                     "number": {"type": "integer"},
                 },
                 "required": ["branch", "number"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "preview_import_sort",
+            "description": (
+                "Preview Ruff import-order corrections ONLY for a diagnosed Ruff "
+                "code-quality failure. The source file must appear in the Jenkins "
+                "finding. No repository edits, tests, or PRs are performed."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
                 "additionalProperties": False,
             },
         },
@@ -84,7 +103,10 @@ def run_groq_agent(jenkins, completion, max_turns=5):
     messages = [
         {"role": "system", "content": INSTRUCTIONS + (
             " You can use only the tools provided. Never invent tool results. "
-            "Do not claim an attempted fix or tested patch."
+            "Never claim a patch was applied or tests were run. "
+             "Only suggest preview_import_sort for code-quality failures with a "
+             "candidate file found in the Jenkins evidence. "
+             "The tool returns metadata, not source code or raw diffs."
         )},
         {"role": "user", "content": (
             "Find and inspect a previous failed Jenkins build using tools. "
@@ -93,9 +115,15 @@ def run_groq_agent(jenkins, completion, max_turns=5):
     ]
     inspected = False
     have_list = False
+    inspected_category = None
+    allowed_paths = []
+    preview_attempted = False
     for _ in range(max_turns):
         if inspected:
-            choice = "none"
+            choice = (
+                "auto" if inspected_category == "code_quality"
+                and allowed_paths and not preview_attempted else "none"
+            )
         elif not have_list:
             choice = {"type": "function", "function": {"name": "list_failed_builds"}}
         else:
@@ -127,7 +155,19 @@ def run_groq_agent(jenkins, completion, max_turns=5):
         for call in calls:
             function = call.get("function", {})
             name = function.get("name")
-            if name not in {"list_failed_builds", "inspect_failed_build"}:
+            if name == "preview_import_sort":
+                preview_attempted = True
+                try:
+                    args = json.loads(function.get("arguments", "{}"))
+                    result = safe_import_preview(
+                        inspected_category if inspected else None,
+                        allowed_paths,
+                        args,
+                        Path(__file__).resolve().parents[1],
+                    )
+                except (ValueError, TypeError, RuntimeError, OSError):
+                    result = {"error": "Import preview rejected or failed"}
+            elif name not in {"list_failed_builds", "inspect_failed_build"}:
                 result = {"error": "Tool not allowed"}
             else:
                 try:
@@ -137,12 +177,21 @@ def run_groq_agent(jenkins, completion, max_turns=5):
                     result = run_tool(jenkins, name, args)
                     if name == "list_failed_builds" and isinstance(result, list):
                         have_list = True
-                    if name == "inspect_failed_build" and "analysis" in result:
-                        inspected = True
+                    if name == "inspect_failed_build" and isinstance(result, dict):
+                        analysis = result.get("analysis")
+                        if isinstance(analysis, dict):
+                            inspected = True
+                            if analysis.get("status") == "failure_detected":
+                                inspected_category = analysis.get("category")
+                                paths = analysis.get("candidate_files", [])
+                                allowed_paths = paths if isinstance(paths, list) else []
                 except (ValueError, TypeError, KeyError, requests.RequestException, RuntimeError):
                     result = {"error": "Tool failed or arguments invalid"}
 
-            tool_label = name if name in {"list_failed_builds", "inspect_failed_build"} else "blocked"
+            tool_label = (
+                name if name in {"list_failed_builds", "inspect_failed_build", "preview_import_sort"}
+                else "blocked"
+            )
             print(f"  Tool used: {tool_label}")
             if name == "list_failed_builds" and result == []:
                 return "Jenkins reported no previous failed builds in the allowed list."

@@ -29,6 +29,26 @@ def analyze_log(log_text: str) -> dict:
             "automatic_changes": False,
         }
 
+    # Ruff import-order failure: only accept explicit failed Jenkins builds.
+    if final_statuses and final_statuses[-1] == "FAILURE" and re.search(
+        r"(?m)^\s*I001\b", log
+    ):
+        paths = list(dict.fromkeys(re.findall(
+            r"(?m)^\s*-->\s+((?:app|tests)/[A-Za-z0-9_./-]+\.py):\d+:\d+",
+            log,
+        )))
+        paths = [path for path in paths if ".." not in path.split("/")][:10]
+        return {
+            "status": "failure_detected",
+            "category": "code_quality",
+            "confidence": "heuristic",
+            "evidence": ["Jenkins failure includes Ruff I001 import-order diagnostics."],
+            "candidate_files": paths,
+            "probable_cause": "Ruff identified unsorted Python imports.",
+            "recommended_action": "Review a local Ruff import-sort preview.",
+            "automatic_changes": False,
+        }
+
     rules = [
         {
             "category": "image_pull_failure",
