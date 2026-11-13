@@ -4,11 +4,13 @@ import getpass
 import json
 import os
 import re
+from pathlib import Path
 
 import requests
 
 from app.ci_investigator import analyze_log
 from app.jenkins_client import JenkinsClient
+from app.jenkins_revision import read_failed_build_revision
 
 MODEL = "gpt-5.4-mini"
 TOOLS = [
@@ -105,8 +107,13 @@ def run_tool(client, name, args):
                 "recommended_action": "Verify Jenkins' authoritative build result.",
                 "confidence": "low",
             }
+        # Resolve only the exact commit Jenkins reports for this failed build.
+        # An unavailable/ambiguous revision is never guessed.
+        revision = read_failed_build_revision(
+            client, build, Path(__file__).resolve().parents[1]
+        )
         return {"branch": branch, "number": number, "analysis": analysis,
-                "truncated": truncated}
+                "truncated": truncated, "revision": revision}
     return {"error": "Tool not allowed"}
 
 
