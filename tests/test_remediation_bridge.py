@@ -54,17 +54,22 @@ def test_groq_agent_selects_preview_after_confirmed_ruff_failure(monkeypatch):
                 "status": "failure_detected",
                 "category": "code_quality",
                 "candidate_files": ["app/main.py"],
+            }, "revision": {
+                "status": "verified",
+                "commit": "a" * 40,
+                "source": "jenkins_lastBuiltRevision",
             }}
         raise AssertionError("Unexpected Jenkins tool")
 
-    def fake_preview(category, paths, args, _root):
+    def fake_preview(category, paths, revision, args, _root):
+        assert revision["commit"] == "a" * 40
         assert category == "code_quality"
         assert paths == ["app/main.py"]
         assert args == {"path": "app/main.py"}
         return {"changed": True, "applied_to_repository": False}
 
     monkeypatch.setattr(groq_agent, "run_tool", fake_run_tool)
-    monkeypatch.setattr(groq_agent, "safe_import_preview", fake_preview)
+    monkeypatch.setattr(groq_agent, "safe_pinned_import_preview", fake_preview)
 
     def response(_messages, choice):
         calls.append(choice)

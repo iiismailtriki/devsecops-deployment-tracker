@@ -9,7 +9,7 @@ import requests
 
 from app.agent import INSTRUCTIONS, run_tool
 from app.jenkins_client import JenkinsClient
-from app.remediation_bridge import safe_import_preview
+from app.pinned_remediation_bridge import safe_pinned_import_preview
 
 API_URL = "https://api.groq.com/openai/v1/chat/completions"
 DEFAULT_MODEL = "openai/gpt-oss-20b"
@@ -54,7 +54,8 @@ TOOLS = [
             "description": (
                 "Preview Ruff import-order corrections ONLY for a diagnosed Ruff "
                 "code-quality failure. The source file must appear in the Jenkins "
-                "finding. No repository edits, tests, or PRs are performed."
+                "finding, and a Jenkins-verified commit is required. "
+                "No repository edits, tests, or PRs are performed."
             ),
             "parameters": {
                 "type": "object",
@@ -106,7 +107,8 @@ def run_groq_agent(jenkins, completion, max_turns=5):
             "Never claim a patch was applied or tests were run. "
              "Only suggest preview_import_sort for code-quality failures with a "
              "candidate file found in the Jenkins evidence. "
-             "The tool returns metadata, not source code or raw diffs."
+             "A verified Jenkins commit is mandatory; no fallback to the "
+             "current working tree. The tool returns metadata, no diffs."
         )},
         {"role": "user", "content": (
             "Find and inspect a previous failed Jenkins build using tools. "
@@ -118,11 +120,13 @@ def run_groq_agent(jenkins, completion, max_turns=5):
     inspected_category = None
     allowed_paths = []
     preview_attempted = False
+    inspected_revision = None
     for _ in range(max_turns):
         if inspected:
             choice = (
                 "auto" if inspected_category == "code_quality"
-                and allowed_paths and not preview_attempted else "none"
+                and allowed_paths and inspected_revision is not None
+                and not preview_attempted else "none"
             )
         elif not have_list:
             choice = {"type": "function", "function": {"name": "list_failed_builds"}}
@@ -159,9 +163,10 @@ def run_groq_agent(jenkins, completion, max_turns=5):
                 preview_attempted = True
                 try:
                     args = json.loads(function.get("arguments", "{}"))
-                    result = safe_import_preview(
+                    result = safe_pinned_import_preview(
                         inspected_category if inspected else None,
                         allowed_paths,
+                        inspected_revision,
                         args,
                         Path(__file__).resolve().parents[1],
                     )
@@ -185,6 +190,13 @@ def run_groq_agent(jenkins, completion, max_turns=5):
                                 inspected_category = analysis.get("category")
                                 paths = analysis.get("candidate_files", [])
                                 allowed_paths = paths if isinstance(paths, list) else []
+                                revision = result.get("revision")
+                                inspected_revision = (
+                                    revision if isinstance(revision, dict)
+                                    and revision.get("status") == "verified"
+                                    and revision.get("source") == "jenkins_lastBuiltRevision"
+                                    else None
+                                )
                 except (ValueError, TypeError, KeyError, requests.RequestException, RuntimeError):
                     result = {"error": "Tool failed or arguments invalid"}
 
