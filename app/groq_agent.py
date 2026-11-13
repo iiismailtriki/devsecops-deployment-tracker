@@ -9,7 +9,10 @@ import requests
 
 from app.agent import INSTRUCTIONS, run_tool
 from app.jenkins_client import JenkinsClient
-from app.pinned_remediation_bridge import safe_pinned_import_preview
+from app.pinned_remediation_bridge import (
+    safe_pinned_import_preview,
+    safe_pinned_import_validation,
+)
 
 API_URL = "https://api.groq.com/openai/v1/chat/completions"
 DEFAULT_MODEL = "openai/gpt-oss-20b"
@@ -65,6 +68,24 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "validate_import_fix",
+            "description": (
+                "After a successful preview_import_sort, validate the SAME authorized "
+                "Ruff import-order correction in restricted Docker using the "
+                "Jenkins-verified commit. Returns metadata only. Does not run "
+                "application tests, change Git, or create a PR."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+                "additionalProperties": False,
+            },
+        },
+    },
 ]
 
 
@@ -107,6 +128,8 @@ def run_groq_agent(jenkins, completion, max_turns=5):
             "Never claim a patch was applied or tests were run. "
              "Only suggest preview_import_sort for code-quality failures with a "
              "candidate file found in the Jenkins evidence. "
+             "After a successful preview, validate the same proposed import "
+             "fix in Docker when appropriate; validation runs only Ruff. "
              "A verified Jenkins commit is mandatory; no fallback to the "
              "current working tree. The tool returns metadata, no diffs."
         )},
@@ -120,13 +143,21 @@ def run_groq_agent(jenkins, completion, max_turns=5):
     inspected_category = None
     allowed_paths = []
     preview_attempted = False
+    preview_path = None
+    validation_attempted = False
     inspected_revision = None
     for _ in range(max_turns):
         if inspected:
-            choice = (
-                "auto" if inspected_category == "code_quality"
+            eligible = (
+                inspected_category == "code_quality"
                 and allowed_paths and inspected_revision is not None
-                and not preview_attempted else "none"
+            )
+            choice = (
+                "auto" if eligible and (
+                    not preview_attempted or (
+                        preview_path is not None and not validation_attempted
+                    )
+                ) else "none"
             )
         elif not have_list:
             choice = {"type": "function", "function": {"name": "list_failed_builds"}}
@@ -170,8 +201,30 @@ def run_groq_agent(jenkins, completion, max_turns=5):
                         args,
                         Path(__file__).resolve().parents[1],
                     )
+                    if result.get("changed") is True and "error" not in result:
+                        preview_path = result.get("path")
                 except (ValueError, TypeError, RuntimeError, OSError):
                     result = {"error": "Import preview rejected or failed"}
+            elif name == "validate_import_fix":
+                validation_attempted = True
+                try:
+                    args = json.loads(function.get("arguments", "{}"))
+                    if (
+                        preview_path is None or not isinstance(args, dict)
+                        or set(args) != {"path"}
+                        or args["path"] != preview_path
+                    ):
+                        result = {"error": "Validation requires successful preview of same file"}
+                    else:
+                        result = safe_pinned_import_validation(
+                            inspected_category if inspected else None,
+                            allowed_paths,
+                            inspected_revision,
+                            args,
+                            Path(__file__).resolve().parents[1],
+                        )
+                except (ValueError, TypeError, RuntimeError, OSError):
+                    result = {"error": "Import validation rejected or failed"}
             elif name not in {"list_failed_builds", "inspect_failed_build"}:
                 result = {"error": "Tool not allowed"}
             else:
@@ -201,7 +254,10 @@ def run_groq_agent(jenkins, completion, max_turns=5):
                     result = {"error": "Tool failed or arguments invalid"}
 
             tool_label = (
-                name if name in {"list_failed_builds", "inspect_failed_build", "preview_import_sort"}
+                name if name in {
+                    "list_failed_builds", "inspect_failed_build",
+                    "preview_import_sort", "validate_import_fix",
+                }
                 else "blocked"
             )
             print(f"  Tool used: {tool_label}")
