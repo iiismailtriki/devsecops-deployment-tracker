@@ -74,3 +74,29 @@ def test_final_failure_overrides_previous_success():
         "Finished: FAILURE"
     )
     assert result["category"] == "container_vulnerability"
+
+
+def test_inline_ruff_i001_format():
+    result = analyze_log(
+        "Code Quality - Ruff\n"
+        "app/example.py:1:1: I001 Import block is un-sorted\n"
+        "Finished: FAILURE\n"
+    )
+    assert result["category"] == "code_quality"
+    assert result["candidate_files"] == ["app/example.py"]
+
+
+def test_inline_ruff_success_does_not_authorize_remediation():
+    result = analyze_log(
+        "app/example.py:1:1: I001 Import block is un-sorted\n"
+        "Finished: SUCCESS\n"
+    )
+    assert result["status"] == "success"
+
+
+def test_unrelated_file_does_not_authorize_ruff_remediation():
+    result = analyze_log(
+        "README.md:1:1: I001 Import block is un-sorted\n"
+        "Finished: FAILURE\n"
+    )
+    assert result.get("candidate_files", []) == []
